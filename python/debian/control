@@ -9,4 +9,5 @@ Package: python-pxlib
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
 Description: An extension to read and write Paradox databases
- This is an extension for reading and writing Paradox databas files.
+ This is the Python wrapper around the lower level pxlib, a library
+ for reading and writing Paradox database files.
