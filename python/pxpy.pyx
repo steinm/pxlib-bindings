@@ -21,7 +21,11 @@ import datetime
 
 cdef extern from "Python.h": 
     object PyString_FromStringAndSize(char *s, int len)
+    object PyString_Decode(char *s, int len, char *encoding, char *errors)
 
+cdef extern from "string.h":
+    int strnlen(char *s, int maxlen)
+    
 cdef extern from "paradox.h":
     ctypedef enum fieldtype_t:
         pxfAlpha = 0x01
@@ -79,6 +83,7 @@ cdef extern from "paradox.h":
     ctypedef struct pxdoc_t:
         char *px_name
         pxhead_t *px_head
+        char *targetencoding
         void *(*malloc)(pxdoc_t *p, unsigned int size, char *caller)
         void  (*free)(pxdoc_t *p, void *mem)
         
@@ -148,7 +153,13 @@ cdef class PXDoc:
         if self.isopen:
             PX_close(self.doc)
             self.isopen = 0
-        
+
+    def setTargetEncoding(self, encoding):
+        PX_set_targetencoding(self.doc, encoding)
+
+    def setInputEncoding(self, encoding):
+        PX_set_inputencoding(self.doc, encoding)
+
     def __dealloc__(self):
         """
         Close the data file
@@ -238,7 +249,7 @@ cdef class Table(PXDoc):
         
         PXDoc.open(self)
         self.record = Record(self)
-        self.current_recno = 0
+        self.current_recno = -1
         self.primary_index = None
 
     def close(self):
@@ -253,6 +264,13 @@ cdef class Table(PXDoc):
             
         PXDoc.close(self)
         
+    def getCodePage(self):
+        """
+        Return the code page of the underlying Paradox table.
+        """
+        
+        return "cp%d" % self.doc.px_head.px_doscodepage
+    
     def setPrimaryIndex(self, indexname):
         """
         Set the primary index of the table.
@@ -336,7 +354,6 @@ cdef class Field:
         Return some Python value representing the current value of the field.
         """
         
-        cdef char *value_alpha
         cdef double value_double
         cdef long value_long
         cdef char value_char
@@ -347,17 +364,10 @@ cdef class Field:
         cdef int mod_nr
 
         if self.ftype == pxfAlpha:
-            if PX_get_data_alpha(self.record.table.doc,
-                                 self.data, self.flen, &value_alpha)<0:
-                raise "Cannot extract alpha field '%s'" % self.fname
-
-            if value_alpha:
-                value = value_alpha
-                self.record.table.doc.free(self.record.table.doc,
-                                             value_alpha)
-                return value
-            else:
-                return None
+            codepage = self.record.table.getCodePage()
+            size = strnlen(<char*> self.data, self.flen)
+            return PyString_Decode(<char*> self.data, size,
+                                   codepage, "replace")
         
         elif self.ftype == pxfDate:
             if PX_get_data_long(self.record.table.doc,
@@ -400,7 +410,19 @@ cdef class Field:
             else:
                 return False
 
-        elif self.ftype in [pxfMemoBLOb, pxfBLOb, pxfFmtMemoBLOb, pxfGraphic]:
+        elif self.ftype in [pxfMemoBLOb, pxfFmtMemoBLOb]:
+            
+            if not self.record.table.blob:
+                return "NO BLOB FILE"
+            
+            blobdata = PX_read_blobdata(self.record.table.blob.blob,
+                                        self.data, self.flen,
+                                        &mod_nr, &size)
+            if blobdata and size>0:
+                codepage = self.record.table.getCodePage()
+                return PyString_Decode(blobdata, size, codepage, "replace")
+            
+        elif self.ftype in [pxfBLOb, pxfGraphic]:
             if not self.record.table.blob:
                 return "NO BLOB FILE"
 
