@@ -12,11 +12,18 @@ from distutils.extension import Extension
 from Pyrex.Distutils import build_ext
 
 setup(
-  name = 'svn',
+  name = 'python-pxlib',
+  description = "Python wrapper around pxlib",
+  version = '0.0.1',
+  author = "Lele Gaifax",
+  author_email = "lele@nautilus.homeip.net",
+  url = "http://pxlib.sourceforge.net/",
+  
   ext_modules=[ 
     Extension("pxpy", ["pxpy.pyx"],
-              include_dirs=["../../pxlib/include/"],
-              library_dirs=["../../pxlib/src/.libs"],
+              # Uncomment, to use current version
+              #include_dirs=["../../pxlib/include/"],
+              #library_dirs=["../../pxlib/src/.libs"],
               libraries=["px"]),
     ],
   cmdclass = {'build_ext': build_ext}
