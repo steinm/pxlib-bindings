@@ -4,7 +4,8 @@
 # :Source:   $Source$
 # :Created:  Thu, May 13 2004 01:48:30 CEST
 # :Author:   Lele Gaifax <lele@nautilus.homeip.net>
-# :Revision: $Revision$ by $Author, $Date$
+# :Revision: $Revision$ by $Author$
+# :Date:     $Date$
 # 
 
 import pxpy

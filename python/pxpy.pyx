@@ -3,7 +3,8 @@
 # :Source:   $Source$
 # :Created:  Sun, Apr 04 2004 00:20:28 CEST
 # :Author:   Lele Gaifax <lele@nautilus.homeip.net>
-# :Revision: $Revision$ by $Author, $Date$
+# :Revision: $Revision$ by $Author$
+# :Date:     $Date$
 # 
 
 import datetime
