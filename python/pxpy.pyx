@@ -94,7 +94,7 @@ cdef extern from "paradox.h":
     int PX_open_file(pxdoc_t *pxdoc, char *filename)
     int PX_read_primary_index(pxdoc_t *pindex)
     int PX_add_primary_index(pxdoc_t *pxdoc, pxdoc_t *pindex)
-    int PX_setargetencoding(pxdoc_t *pxdoc, char *encoding)
+    int PX_set_targetencoding(pxdoc_t *pxdoc, char *encoding)
     int PX_set_inputencoding(pxdoc_t *pxdoc, char *encoding)
     pxblob_t *PX_new_blob(pxdoc_t *pxdoc)
     int PX_open_blob_file(pxblob_t *pxdoc, char *filename)
