@@ -366,8 +366,11 @@ cdef class Field:
         if self.ftype == pxfAlpha:
             codepage = self.record.table.getCodePage()
             size = strnlen(<char*> self.data, self.flen)
-            return PyString_Decode(<char*> self.data, size,
-                                   codepage, "replace")
+            if size==0:
+                return None
+            else:
+                return PyString_Decode(<char*> self.data, size,
+                                       codepage, "replace")
         
         elif self.ftype == pxfDate:
             if PX_get_data_long(self.record.table.doc,
