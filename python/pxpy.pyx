@@ -7,6 +7,16 @@
 # :Date:     $Date$
 # 
 
+"""
+Python wrapper around pxlib.
+
+This module, written in Pyrex_, allow to read data from Paradox tables
+using the pxlib_ library.
+
+.. _pyrex: http://www.cosc.canterbury.ac.nz/~greg/python/Pyrex/
+.. _pxlib: http://pxlib.sourceforge.net/
+"""
+
 import datetime
 
 cdef extern from "Python.h": 
@@ -104,36 +114,102 @@ cdef extern from "paradox.h":
 
 
 cdef class PXDoc:
+    """
+    Basic wrapper to 'pxdoc_t' based objects.
+    """
+    
     cdef pxdoc_t *doc
     cdef char *filename
+    cdef char isopen
     
     def __new__(self, filename):
+        """
+        Create a PXDoc instance, associated to the given external filename.
+        """
+        
         self.filename = filename
         self.doc = PX_new()
-
+        self.isopen = 0
+        
     def open(self):
+        """
+        Open the data file.
+        """
+        
         if PX_open_file(self.doc, self.filename)<0:
             raise "Couldn't open `%s`" % self.filename
-    
+        self.isopen = 1
+        
+    def close(self):
+        """
+        Close the data file if needed.
+        """
+
+        if self.isopen:
+            PX_close(self.doc)
+            self.isopen = 0
+        
     def __dealloc__(self):
-        PX_close(self.doc)
+        """
+        Close the data file
+        """
+        
+        self.close()
 
 
 cdef class BlobFile:
+    """
+    External BLOb file.
+    """
+    
     cdef pxblob_t *blob
     cdef char *filename
+    cdef char isopen
 
     def __new__(self, PXDoc table, filename):
+        """
+        Create a new BlobFile instance, associated to the given external file.
+        """
+        
         self.filename = filename
         self.blob = PX_new_blob(table.doc)
+        self.isopen = 0
         
     def open(self):
+        """
+        Actually open the external blob file.
+        """
+        
         if PX_open_blob_file(self.blob, self.filename)<0:
             raise "Couldn't open blob `%s`" % self.filename
+        self.isopen = 1
         
+    def close(self):
+        """
+        Close the external blob file, if needed.
+        """
+        
+        if self.isopen:
+            PX_close_blob(self.blob)
+            self.isopen = 0
 
+    def __dealloc__(self):
+        """
+        Close the external blob file
+        """
+        
+        self.close()
+    
 cdef class PrimaryIndex(PXDoc):
+    """
+    The primary index file.
+    """
+    
     def open(self):
+        """
+        Open the primary index file.
+        """
+        
         PXDoc.open(self)
         if PX_read_primary_index(self.doc)<0:
             raise "Couldn't read primary index `%s`" % self.filename
@@ -143,31 +219,80 @@ cdef class Record
 
 
 cdef class Table(PXDoc):
+    """
+    A `Table` represent a Paradox table, with primary index and blob file.
+
+    An instance has notion about the current record number, and
+    keeps a copy of the values associated to each field.
+    """
+    
     cdef readonly Record record
     cdef int current_recno
     cdef BlobFile blob
+    cdef PrimaryIndex primary_index
     
     def open(self):
+        """
+        Open the data file and associate a Record instance.
+        """
+        
         PXDoc.open(self)
         self.record = Record(self)
         self.current_recno = 0
+        self.primary_index = None
+
+    def close(self):
+        """
+        Close the eventual primary index or blob file, then the data file.
+        """
+        
+        if self.primary_index:
+            self.primary_index.close()
+        if self.blob:
+            self.blob.close()
+            
+        PXDoc.close(self)
         
     def setPrimaryIndex(self, indexname):
-        cdef PrimaryIndex index
+        """
+        Set the primary index of the table.
+        """
         
-        index = PrimaryIndex(indexname)
-        index.open()
-        if PX_add_primary_index(self.doc, index.doc)<0:
-            raise "Couldn't add primary index `%s`" % index.filename
+        self.primary_index = PrimaryIndex(indexname)
+        self.primary_index.open()
+        if PX_add_primary_index(self.doc, self.primary_index.doc)<0:
+            raise "Couldn't add primary index `%s`" % indexname
 
     def setBlobFile(self, blobfilename):
+        """
+        Set and open the external blob file.
+        """
         self.blob = BlobFile(self, blobfilename)
         self.blob.open()
     
     def getFieldsCount(self):
+        """
+        Get number of fields in the table.
+        """
+        
         return self.record.getFieldsCount()
     
     def readRecord(self, recno=None):
+        """
+        Read the data of the next/some specific `recno` record.
+
+        Return False if at EOF or `recno` is beyond the last record,
+        True otherwise. This makes this method suitable to be called
+        in a while loop in this way::
+
+           record = t.record
+           while t.readRecord():
+               for i in range(record.getFieldsCount()):
+                   f = record.fields[i]
+                   value = f.getValue()
+                   print "%s: %s" % (f.fname, value)
+        """
+        
         if not recno:
             recno = self.current_recno+1
         else:
@@ -181,6 +306,10 @@ cdef class Table(PXDoc):
         return self.record.read(recno)
 
 cdef class Field:
+    """
+    Represent a single field of a Record associated to some Table.
+    """
+    
     cdef void *data
     cdef Record record
     cdef readonly fname
@@ -188,6 +317,12 @@ cdef class Field:
     cdef flen
     
     def __new__(self, Record record, int index, int offset):
+        """
+        Create a new instance, associated with the given `record`,
+        pointing to the index-th field, which data is displaced by
+        `offset` from the start of the record memory buffer.
+        """
+        
         self.record = record
         self.fname = record.table.doc.px_head.px_fields[index].px_fname
         self.ftype = record.table.doc.px_head.px_fields[index].px_ftype
@@ -195,6 +330,12 @@ cdef class Field:
         self.flen = record.table.doc.px_head.px_fields[index].px_flen
         
     def getValue(self):
+        """
+        Get the field's value.
+
+        Return some Python value representing the current value of the field.
+        """
+        
         cdef char *value_alpha
         cdef double value_double
         cdef long value_long
@@ -293,11 +434,21 @@ cdef class Field:
 
 
 cdef class Record:
+    """
+    An instance of this class wraps the memory buffer associated to a
+    single record of a given table.
+    """
+    
     cdef void *data
     cdef Table table
     cdef public fields
     
     def __new__(self, Table table):
+        """
+        Create a Record instance, allocating the memory buffer and
+        building the list of the Field instances.
+        """
+        
         cdef int offset
         
         self.data = table.doc.malloc(table.doc,
@@ -312,9 +463,16 @@ cdef class Record:
             offset = offset + table.doc.px_head.px_fields[i].px_flen
 
     def getFieldsCount(self):
+        """
+        Get number of fields in the record.
+        """
         return self.table.doc.px_head.px_numfields
     
     def read(self, recno):
+        """
+        Read the data associated to the record numbered `recno`.
+        """
+        
         if PX_get_record(self.table.doc, recno, self.data) == NULL:
             raise "Couldn't get record %d from '%s'" % (recno,
                                                         self.table.filename)
